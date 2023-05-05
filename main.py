@@ -4,23 +4,32 @@ import graphviz as GV
 from color_palette import colors
 from json import load as json_loader
 
-class CallNode:
-  _color_map = {}
-
-  def __init__(self, json):
-    cf = json["callFrame"]
-    self.id = str(json["id"])
+#https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-CallFrame
+class CallFrame:
+  def __init__(self, cf):
     self.name = cf["functionName"] or "(anonymous)"
-    self.parent = str(json.get("parent", "???"))
     self.url = cf.get("url", "")
-    self.script_name = self.url[self.url.rindex("/")+1:] if "/" in self.url else "(unknown)"
     self.line_number = cf.get("lineNumber", 0)
     self.column_number = cf.get("columnNumber", 0)
     self.script_id = cf.get("scriptId", 0)
     self.code_type = cf.get("codeType", "???")
-    if self.script_id not in CallNode._color_map:
-      CallNode._color_map[self.script_id] = random.choice(colors)
-    self.color = CallNode._color_map[self.script_id]
+
+#https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#type-ProfileNode
+class ProfileNode:
+  _color_map = {}
+  _lookup = {}
+
+  def __init__(self, pn, timestamp):
+    self.cf = cf = pn["callFrame"]
+    self.id = str(pn["id"])
+    self.parent = str(pn.get("parent", "???"))
+    self.script_name = self.url[self.url.rindex("/")+1:] if "/" in self.url else "(unknown)"
+    self.timestamp = timestamp
+    if self.script_id not in ProfileNode._color_map:
+      ProfileNode._color_map[self.script_id] = random.choice(colors)
+    self.color = ProfileNode._color_map[self.script_id]
+
+    ProfileNode._lookup[self.id] = self
 
   @property
   def label(self):
@@ -28,6 +37,12 @@ class CallNode:
 
   def is_from_script(self, script_name):
     return self.url.endswith(script_name)
+
+  def calc_parent_time_delta(self):
+    parent = ProfileNode._lookup.get(self.parent, None)
+    if not parent:
+      return 0
+    return (self.timestamp - parent.timestamp) // 1000
 
 def rget(dic, path):
   attrs = path.split(".")
@@ -39,20 +54,27 @@ def rget(dic, path):
       break
   return dic
 
+def should_exclude_profile_node(pn):
+  return pn.script_id == 0 or \
+         pn.url.startswith("chrome-extension://") or \
+         pn.code_type != "JS"
+
+def get_profile_timestamp(p):
+  ...
+
 def load_profile(filepath):
-  all_nodes = []; data = []
+  profile_nodes = []; data = []
   with open(filepath, "r", encoding="utf8") as file:
     data = json_loader(file)
   for d in data:
     if (nodes := rget(d, "args.data.cpuProfile.nodes")):
-      all_nodes += nodes
-  call_nodes = [CallNode(json) for json in all_nodes]
+      for node in nodes:
+        profile_nodes.append(ProfileNode(node, get_timestamp(d)))
   out = []
-  for cn in call_nodes:
-    if cn.script_id != 0 and \
-       not cn.url.startswith("chrome-extension://") and \
-       cn.code_type == "JS":
-      out.append(cn)
+  for pn in profile_nodes:
+    if not should_exclude_profile_node(pn):
+      out.append(pn)
+  out.sort(key=lambda x: x.timestamp)
   return out
 
 def load_args():
@@ -61,24 +83,24 @@ def load_args():
   parser.add_argument("--filter", action="append")
   return parser.parse_args()
 
-def filter_call_nodes(call_nodes, filters):
+def filter_profile_nodes(profile_nodes, filters):
   filtered = []
   for script_name in filters:
-    filtered += [cn for cn in call_nodes if cn.is_from_script(script_name)]
+    filtered += [pn for pn in profile_nodes if pn.is_from_script(script_name)]
   return filtered
 
-def create_graph(call_nodes):
+def create_graph(profile_nodes):
   g = GV.Digraph(filename="Diagram", directory=tempfile.gettempdir(), format="svg")
-  for cn in call_nodes:
-    g.node(cn.id, label=cn.label, penwidth="3", color=cn.color)
-    g.edge(cn.parent, cn.id)
+  for pn in profile_nodes:
+    g.node(pn.id, label=pn.label, penwidth="3", color=pn.color)
+    g.edge(pn.parent, pn.id, label=f"{pn.calc_parent_time_delta():,}ms")
   g.view()
 
 def main(args):
-  call_nodes = load_profile(args.profile)
+  profile_nodes = load_profile(args.profile)
   if args.filter:
-    call_nodes = filter_call_nodes(call_nodes, args.filter)
-  create_graph(call_nodes)
+    profile_nodes = filter_profile_nodes(profile_nodes, args.filter)
+  create_graph(profile_nodes)
 
 if __name__ == "__main__":
   main(load_args())

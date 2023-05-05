@@ -4,4 +4,5 @@
   needs to be done
 - Add '--exclude' arg to filter OUT scripts
 - Change '--filter' arg to '--include'
+- Add '--diff' functionality
 
