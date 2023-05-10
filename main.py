@@ -12,7 +12,11 @@ class CallFrame:
     self.line_number = cf.get("lineNumber", 0)
     self.column_number = cf.get("columnNumber", 0)
     self.script_id = cf.get("scriptId", 0)
+    self.script_name = self.url[self.url.rindex("/")+1:] if "/" in self.url else "???"
     self.code_type = cf.get("codeType", "???")
+
+  def is_from_script(self, script_name):
+    return self.url.endswith(script_name)
 
 #https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#type-ProfileNode
 class ProfileNode:
@@ -23,17 +27,13 @@ class ProfileNode:
     self.cf = cf = CallFrame(pn["callFrame"])
     self.id = str(pn["id"])
     self.parent = str(pn.get("parent", "???"))
-    self.script_name = cf.url[cf.url.rindex("/")+1:] if "/" in cf.url else "(unknown)"
     self.color = ProfileNode._get_script_color(cf.script_id)
 
     ProfileNode._lookup[self.id] = self
 
   @property
   def label(self):
-    return f"{self.cf.name}\n{self.script_name}\n{self.cf.line_number}:{self.cf.column_number}"
-
-  def is_from_script(self, script_name):
-    return self.cf.url.endswith(script_name)
+    return f"{self.cf.name}\n{self.cf.script_name}\n{self.cf.line_number}:{self.cf.column_number}"
 
   def calc_parent_time_delta(self):
     parent = ProfileNode._lookup.get(self.parent, None)
@@ -90,7 +90,7 @@ def load_args():
 def filter_profile_nodes(profile_nodes, filters):
   filtered = []
   for script_name in filters:
-    filtered += [pn for pn in profile_nodes if pn.is_from_script(script_name)]
+    filtered += [pn for pn in profile_nodes if pn.cf.is_from_script(script_name)]
   return filtered
 
 def create_graph(profile_nodes):
