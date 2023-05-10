@@ -19,30 +19,33 @@ class ProfileNode:
   _color_map = {}
   _lookup = {}
 
-  def __init__(self, pn, timestamp):
-    self.cf = cf = pn["callFrame"]
+  def __init__(self, pn):
+    self.cf = cf = CallFrame(pn["callFrame"])
     self.id = str(pn["id"])
     self.parent = str(pn.get("parent", "???"))
-    self.script_name = self.url[self.url.rindex("/")+1:] if "/" in self.url else "(unknown)"
-    self.timestamp = timestamp
-    if self.script_id not in ProfileNode._color_map:
-      ProfileNode._color_map[self.script_id] = random.choice(colors)
-    self.color = ProfileNode._color_map[self.script_id]
+    self.script_name = cf.url[cf.url.rindex("/")+1:] if "/" in cf.url else "(unknown)"
+    self.color = ProfileNode._get_script_color(cf.script_id)
 
     ProfileNode._lookup[self.id] = self
 
   @property
   def label(self):
-    return f"{self.name}\n{self.script_name}\n{self.line_number}:{self.column_number}"
+    return f"{self.cf.name}\n{self.script_name}\n{self.cf.line_number}:{self.cf.column_number}"
 
   def is_from_script(self, script_name):
-    return self.url.endswith(script_name)
+    return self.cf.url.endswith(script_name)
 
   def calc_parent_time_delta(self):
     parent = ProfileNode._lookup.get(self.parent, None)
     if not parent:
       return 0
-    return (self.timestamp - parent.timestamp) // 1000
+    return 0 #TODO calc time delta
+
+  @staticmethod
+  def _get_script_color(script_id):
+    if script_id not in ProfileNode._color_map:
+      ProfileNode._color_map[script_id] = random.choice(colors)
+    return ProfileNode._color_map[script_id]
 
 def rget(dic, path):
   attrs = path.split(".")
@@ -55,26 +58,27 @@ def rget(dic, path):
   return dic
 
 def should_exclude_profile_node(pn):
-  return pn.script_id == 0 or \
-         pn.url.startswith("chrome-extension://") or \
-         pn.code_type != "JS"
+  return pn.cf.script_id == 0 or \
+         pn.cf.url.startswith("chrome-extension://") or \
+         pn.cf.code_type != "JS"
 
 def get_profile_timestamp(p):
   ...
 
 def load_profile(filepath):
-  profile_nodes = []; data = []
+  profile_nodes = []
+  data = []
   with open(filepath, "r", encoding="utf8") as file:
     data = json_loader(file)
   for d in data:
     if (nodes := rget(d, "args.data.cpuProfile.nodes")):
       for node in nodes:
-        profile_nodes.append(ProfileNode(node, get_timestamp(d)))
+        profile_nodes.append(ProfileNode(node))
   out = []
   for pn in profile_nodes:
     if not should_exclude_profile_node(pn):
       out.append(pn)
-  out.sort(key=lambda x: x.timestamp)
+  #out.sort(key=lambda x: x.timestamp)
   return out
 
 def load_args():
