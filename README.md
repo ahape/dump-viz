@@ -1,6 +1,8 @@
 # DumpViz
 
-A graphviz rendering of a Chrome DevTools performance dump (trace.json).
+A graphviz rendering of a Chrome DevTools performance dump (trace.json)
+
+![image](https://github.com/user-attachments/assets/5a2ae0a6-a9f8-4f70-90c7-77a975bafdb3)
 
 ## Requirements
 
@@ -18,7 +20,9 @@ Then, per the Python [installation instructions](https://pypi.org/project/graphv
 
 ## Usage
 
-Download the trace file you would like to see a graph for.
+Download the trace file you would like to see a graph for
+
+![image](https://github.com/user-attachments/assets/b1c9c02f-d245-4efb-a58b-f8e45464b0ee)
 
 Open the JSON file in any text editor and trim the root object so that all there is is the array of `{ "args": { ... } }` objects. Save the updated JSON file. (TODO: impl code to bypass this step)
 
